@@ -1,7 +1,5 @@
-import json
 import os
 import logging
-import re
 from dataclasses import dataclass
 
 from telegram import (
@@ -47,11 +45,8 @@ class TelegramBot(TelegramBotBase):
     @staticmethod
     def get_delete_attempt_button(post_id: int):
         return InlineKeyboardButton(
-            text='🗑 Удалить',
-            callback_data=json.dumps({
-                'command': 'attempt_to_delete',
-                'post_id': post_id,
-            }),
+            text='🗑',
+            callback_data=f'del_attempt|{post_id}',
         )
 
     def create_post(self, post_id: int, post_data: PostData):
@@ -104,48 +99,69 @@ class TelegramBot(TelegramBotBase):
         else:
             self.create_post(post_id=post_id, post_data=parser.post_data)
 
-    def channel_post_command_callback_query(self, update, context):
-        data = json.loads(update.callback_query.data)
-        command = data.get('command')
+    def command_del_attempt(
+        self,
+        *args,
+        update: Update,
+        context: CallbackContext,
+    ):
+        post_id, *_ = args
+        update.callback_query.answer('Confirmation required')
 
-        if command == 'attempt_to_delete':
-            update.callback_query.answer('Confirmation required')
+        delete_button = InlineKeyboardButton(
+            text='🗑',
+            callback_data=f'del|{post_id}',
+        )
+        cancel_button = InlineKeyboardButton(
+            text='❌',
+            callback_data=f'del_cancel|{post_id}',
+        )
+        update.callback_query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup([[
+                delete_button,
+                cancel_button,
+            ]])
+        )
 
-            delete_button = InlineKeyboardButton(
-                text='🗑 Удалить',
-                callback_data=json.dumps({
-                    'command': 'delete',
-                    'post_id': data['post_id'],
-                }),
-            )
-            cancel_button = InlineKeyboardButton(
-                text='❌ Отмена',
-                callback_data=json.dumps({
-                    'command': 'cancel_delete',
-                    'post_id': data['post_id'],
-                }),
-            )
-            update.callback_query.edit_message_reply_markup(
-                reply_markup=InlineKeyboardMarkup([[
-                    delete_button,
-                    cancel_button,
-                ]])
-            )
+    def command_del(
+        self,
+        *args,
+        update: Update,
+        context: CallbackContext,
+    ):
+        post_id, *_ = args
+        update.callback_query.answer('Deleting...')
+        user = update.effective_user
+        self.delete_post(post_id=post_id, user=user)
+        update.callback_query.edit_message_reply_markup()
+        update.callback_query.answer('Deleted')
 
-        if command == 'delete':
-            update.callback_query.answer('Deleting...')
-            user = update.effective_user
-            self.delete_post(post_id=data['post_id'], user=user)
-            update.callback_query.edit_message_reply_markup()
-            update.callback_query.answer('Deleted')
+    def command_del_cancel(
+        self,
+        *args,
+        update: Update,
+        context: CallbackContext,
+    ):
+        post_id, *_ = args
+        update.callback_query.answer('Deletion cancelled')
+        update.callback_query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup([[
+                self.get_delete_attempt_button(post_id=post_id),
+            ]])
+        )
 
-        if command == 'cancel_delete':
-            update.callback_query.answer('Deletion cancelled')
-            update.callback_query.edit_message_reply_markup(
-                reply_markup=InlineKeyboardMarkup([[
-                    self.get_delete_attempt_button(post_id=data['post_id']),
-                ]])
-            )
+    def channel_post_command_callback_query(
+        self,
+        update: Update,
+        context: CallbackContext,
+    ):
+        command_name, *command_args = update.callback_query.data.split('|')
+        command = getattr(self, f'command_{command_name}')
+        command(
+            *command_args,
+            update=update,
+            context=context,
+        )
 
 
 if __name__ == '__main__':
