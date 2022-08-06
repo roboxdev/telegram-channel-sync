@@ -35,6 +35,8 @@ deploy-cloud-function:
 set-webhook:
   stage: set-webhook
   image: python:3.10-slim
+  variables:
+    BOT_TOKEN: $BOT_TOKEN
   script:
     - pip install -r requirements.txt
     - python3 -m set_webhook
