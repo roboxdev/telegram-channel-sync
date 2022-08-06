@@ -25,7 +25,7 @@ deploy-cloud-function:
       --trigger-http
       --allow-unauthenticated
       --source=.
-    - echo "WEBHOOK_URL=$(gcloud functions describe $GCF_NAME | grep -Po "url.+?\K(\S+)" | grep $GCF_NAME)" >> deploy.env
+    - echo "WEBHOOK_URL=$(gcloud functions describe --region=europe-west1 $GCF_NAME | grep -Po "url.+?\K(\S+)" | grep $GCF_NAME)" >> deploy.env
   artifacts:
     reports:
       dotenv: deploy.env
