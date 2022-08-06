@@ -1,11 +1,10 @@
 import os
-from dataclasses import dataclass
 from urllib.parse import quote_plus
 
 import requests
 import yaml
 
-from post_parser import PostData
+from post import Post
 
 GITLAB_API_TOKEN = os.environ.get('GITLAB_API_TOKEN')
 REPOSITORY_BASE_URL = os.environ.get('REPOSITORY_BASE_URL')
@@ -13,10 +12,30 @@ TG_POST_FILE_PATH = os.environ.get('TG_POST_FILE_PATH',
                                    'content/tgposts/{}/index.md')
 
 
-@dataclass
 class GitlabPost:
-    post_id: int
     branch: str = 'master'
+    _post: Post = None
+    _post_id: int = None
+
+    @classmethod
+    def from_post(cls, post: Post):
+        gitlab_post = cls()
+        gitlab_post._post = post
+        return gitlab_post
+
+    @classmethod
+    def from_id(cls, post_id: int):
+        gitlab_post = cls()
+        gitlab_post._post_ = post_id
+        return gitlab_post
+
+    @property
+    def post_id(self):
+        return self._post_id or self.post.post_id
+
+    @property
+    def post(self):
+        return self._post
 
     @property
     def auth_headers(self):
@@ -30,27 +49,35 @@ class GitlabPost:
         url = '{}/{}'.format(REPOSITORY_BASE_URL, quote_plus(filepath))
         return url
 
-    def create_or_update(self, post_data: PostData, is_update=False):
-        to_dump = post_data.copy()
+    @property
+    def front_matter(self):
+        return yaml.dump({
+            'post_id': self.post_id,
+            'title': self.post.title,
+            'date': self.post.date,
+            'edit_date': self.post.edit_date,
+            'link': self.post.message_link,
+            'html': '',
+            'media_html': self.post.media_html,
+        })
 
-        title = post_data.get('title')
-        date = post_data.get('date')
-        body = to_dump.pop('body')
+    def get(self):
+        response = requests.get(
+            url=self.url,
+            headers=self.auth_headers,
+        )
+        if response.status_code == requests.codes.not_found:
+            pass
 
-        isodate = date.isoformat()
-        front_matter_yaml = yaml.dump(to_dump)
-
-        md_file_template = f'---\n{front_matter_yaml}\n---\n{body}\n'
+    def create_or_update(self, is_update=False):
+        post = self.post
 
         action = 'Create new' if not is_update else 'Update'
-        commit_message = f'{action} tgpost {self.post_id}: [{isodate}]: {title}'
+        commit_message = f'{action} tgpost {self.post_id}: [{post.date}]: {post.title}'
 
         payload = {
             'branch': self.branch,
-            'content': md_file_template.format(
-                date=isodate,
-                title=title,
-            ),
+            'content': f'---\n{self.front_matter}\n---\n{post.html}\n',
             'commit_message': commit_message,
         }
 
@@ -71,7 +98,6 @@ class GitlabPost:
             'commit_message': commit_message,
         }
 
-        # return
         response = requests.delete(
             url=self.url,
             json=payload,

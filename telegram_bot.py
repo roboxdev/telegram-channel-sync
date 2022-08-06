@@ -17,7 +17,7 @@ from telegram.ext import (
 from telegram.update import Update
 
 from telegram_bot_base import TelegramBotBase
-from post_parser import PostParser, PostData
+from post import Post
 from gitlab_post import GitlabPost
 
 logging.basicConfig(level=logging.DEBUG,
@@ -29,13 +29,28 @@ CHANNEL_ID = int(os.environ['CHANNEL_ID'])
 @dataclass
 class TelegramBot(TelegramBotBase):
     def set_handlers(self, dispatcher: Dispatcher):
-        message_filters = Filters.chat(
-            chat_id=CHANNEL_ID) & ~Filters.status_update & ~Filters.forwarded
-        message_handler = MessageHandler(
-            filters=message_filters,
-            callback=self.chat_message_handler,
+        channel_post_message_filter = (
+            Filters.chat(chat_id=CHANNEL_ID) &
+            ~Filters.status_update &
+            ~Filters.forwarded
         )
-        dispatcher.add_handler(message_handler)
+        channel_post_message_handler = MessageHandler(
+            filters=channel_post_message_filter,
+            callback=self.channel_post_message_handler,
+        )
+        dispatcher.add_handler(channel_post_message_handler)
+
+        channel_post_forward_message_filter = (
+            Filters.chat_type.private &
+            # Filters.user(user_id=OWNER_ID) &
+            Filters.forwarded &
+            Filters.forwarded_from(chat_id=CHANNEL_ID)
+        )
+        channel_post_forward_message_handler = MessageHandler(
+            filters=channel_post_forward_message_filter,
+            callback=self.forward_message_handler,
+        )
+        dispatcher.add_handler(channel_post_forward_message_handler)
 
         channel_post_command_query_callback = CallbackQueryHandler(
             callback=self.channel_post_command_callback_query,
@@ -49,33 +64,22 @@ class TelegramBot(TelegramBotBase):
             callback_data=f'del_attempt|{post_id}',
         )
 
-    def create_post(self, post_id: int, post_data: PostData):
-        GitlabPost(post_id=post_id).create_or_update(
-            post_data=post_data,
-            is_update=False,
+    def create_or_update_post(self, post: Post, is_update: bool = False):
+        GitlabPost.from_post(post).create_or_update(
+            is_update=is_update,
         )
+        icon = '🔃' if is_update else '🆕'
         self.log(
-            message=f'🆕 #{post_id} <a href="{post_data["link"]}">'
-                    f'{post_data["title"]}'
+            message=f'{icon} #{post.post_id} <a href="{post.message_link}">'
+                    f'{post.title}'
                     f'</a>',
             reply_markup=InlineKeyboardMarkup([[
-                self.get_delete_attempt_button(post_id=post_id)
+                self.get_delete_attempt_button(post_id=post.post_id)
             ]]),
         )
 
-    def update_post(self, post_id: int, post_data: PostData):
-        GitlabPost(post_id=post_id).create_or_update(
-            post_data=post_data,
-            is_update=True,
-        )
-        self.log(
-            message=f'🔃 #{post_id} <a href="{post_data["link"]}">'
-                    f'{post_data["title"]}'
-                    f'</a>',
-        )
-
     def delete_post(self, post_id: int, user: User = None):
-        GitlabPost(post_id=post_id).delete()
+        GitlabPost.from_id(post_id=post_id).delete()
         self.bot.delete_message(
             chat_id=CHANNEL_ID,
             message_id=post_id,
@@ -85,19 +89,19 @@ class TelegramBot(TelegramBotBase):
             user=user,
         )
 
-    def chat_message_handler(self, update: Update, context: CallbackContext):
+    def channel_post_message_handler(self, update: Update, context: CallbackContext):
         message = update.effective_message
-        post_id = message.message_id
-        parser = PostParser(message)
-        if fallback_title := parser.fallback_title:
+        post = Post.from_message(message)
+        is_update = bool(update.edited_channel_post or post.is_forward)
+        self.create_or_update_post(post=post, is_update=is_update)
+
+        if fallback_title := post.fallback_title:
             self.error(f'Set proper title!\n\n'
                        f'Fallback title set:\n'
                        f'{fallback_title}')
 
-        if is_update := bool(update.edited_channel_post):
-            self.update_post(post_id=post_id, post_data=parser.post_data)
-        else:
-            self.create_post(post_id=post_id, post_data=parser.post_data)
+    def forward_message_handler(self, update: Update, context: CallbackContext):
+        self.channel_post_message_handler(update=update, context=context)
 
     def command_del_attempt(
         self,
