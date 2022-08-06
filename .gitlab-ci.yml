@@ -23,6 +23,7 @@ deploy-cloud-function:
       --set-env-vars APP_TOKEN=$APP_TOKEN,CHANNEL_ID=$CHANNEL_ID,LOG_CHAT_ID=$LOG_CHAT_ID,GITLAB_API_TOKEN=$GITLAB_API_TOKEN,REPOSITORY_BASE_URL=$REPOSITORY_BASE_URL,TG_POST_FILE_PATH=$TG_POST_FILE_PATH,BOT_TOKEN=$BOT_TOKEN
       --region=europe-west1
       --trigger-http
+      --allow-unauthenticated
       --source=.
     - echo "WEBHOOK_URL=$(gcloud functions describe $GCF_NAME | grep -Po "url.+?\K(\S+)" | grep $GCF_NAME)" >> deploy.env
   artifacts:
