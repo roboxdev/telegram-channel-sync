@@ -1,6 +1,7 @@
 stages:
 - quality
 - deploy
+- set-webhook
 
 unit-testing:
   stage: quality
@@ -22,5 +23,26 @@ deploy-cloud-function:
       --region=europe-west1
       --source=.
       --trigger-http
+      --set-env-vars=[
+        BOT_TOKEN=$BOT_TOKEN,
+        APP_TOKEN=$APP_TOKEN,
+        WEBHOOK_URL=$WEBHOOK_URL,
+        CHANNEL_ID=$CHANNEL_ID,
+        LOG_CHAT_ID=$LOG_CHAT_ID,
+        GITLAB_API_TOKEN=$GITLAB_API_TOKEN,
+        REPOSITORY_BASE_URL=$REPOSITORY_BASE_URL,
+        TG_POST_FILE_PATH=$TG_POST_FILE_PATH,
+      ]
+    - echo "WEBHOOK_URL=$(gcloud functions describe $GCF_NAME | grep -Po "url.+?\K(\S+)" | grep $GCF_NAME)" >> deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
+
+set-webhook:
+  stage: set-webhook
+  image: python:3.10-slim
+  script:
+    - pip install -r requirements.txt
+    - python3 -m set_webhook
