@@ -1,5 +1,4 @@
 import os
-import logging
 from dataclasses import dataclass
 
 from telegram import (
@@ -19,9 +18,6 @@ from telegram.update import Update
 from telegram_bot_base import TelegramBotBase
 from post import Post
 from gitlab_post import GitlabPost
-
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 CHANNEL_ID = int(os.environ['CHANNEL_ID'])
 

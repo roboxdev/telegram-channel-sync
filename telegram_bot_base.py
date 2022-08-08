@@ -1,4 +1,5 @@
 import os
+import logging
 from abc import abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -13,6 +14,10 @@ APP_TOKEN = os.environ.get('APP_TOKEN')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
 LOG_CHAT_ID = int(os.environ['LOG_CHAT_ID'])
+
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 
 @dataclass
